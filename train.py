@@ -238,6 +238,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print(f"Epoch {epoch+1} Val IoU: {val_iou:.4f}, Val Dice: {val_dice:.4f}")
         history['val_iou'].append(val_iou)
         history['val_dice'].append(val_dice)
+        
+        # Deep copy the model if best validation accuracy
+        if phase == 'val' and epoch_acc > best_acc:
+            best_acc = epoch_acc
+            best_model_wts = model.state_dict().copy()
     
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
@@ -450,8 +455,8 @@ def main():
     model = ForgeryDetectionNet(num_classes=2, pretrained=True, with_segmentation=True)
     model = model.to(device)
     
-    # Define loss function and optimizer
-    criterion = ForgeryDetectionLoss(seg_weight=1.0, att_weight=0.1)
+    # Define loss function and optimizer (increased segmentation weight)
+    criterion = ForgeryDetectionLoss(seg_weight=2.0, att_weight=0.1)
     optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
     

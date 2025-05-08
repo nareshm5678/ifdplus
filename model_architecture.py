@@ -50,21 +50,34 @@ class ForgeryDetectionNet(nn.Module):
             nn.Linear(512, num_classes)
         )
         
-        # Segmentation head (optional)
+        # U-Net-style decoder head
         self.with_segmentation = with_segmentation
         if with_segmentation:
-            self.segmentation_head = nn.Sequential(
+            # Decoder conv blocks
+            self.dec_conv1 = nn.Sequential(
                 nn.Conv2d(256 * 3, 256, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
+                nn.Conv2d(256, 256, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True)
+            )
+            self.up1 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.dec_conv2 = nn.Sequential(
                 nn.Conv2d(256, 128, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
-                nn.Conv2d(128, 1, kernel_size=1),
-                nn.Sigmoid()
+                nn.Conv2d(128, 128, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True)
             )
+            self.up2 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.dec_conv3 = nn.Sequential(
+                nn.Conv2d(128, 64, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True)
+            )
+            self.up3 = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+            self.seg_final = nn.Conv2d(64, 1, kernel_size=1)
+            self.sigmoid = nn.Sigmoid()
             
-            # Upsampling layers for segmentation
-            self.upsample = nn.Upsample(scale_factor=4, mode='bilinear', align_corners=True)
-        
     def forward(self, x):
         # Get original image size for upsampling
         orig_size = x.size()[2:]
@@ -129,11 +142,14 @@ class ForgeryDetectionNet(nn.Module):
             # Concatenate for segmentation
             seg_features = torch.cat([p5_up, p4_up, pyramid_features[2]], dim=1)
             
-            # Apply segmentation head
-            segmentation = self.segmentation_head(seg_features)
-            
-            # Upsample to original image size
-            segmentation = F.interpolate(segmentation, size=orig_size, mode='bilinear', align_corners=True)
+            # U-Net-style decode
+            x = self.dec_conv1(seg_features)
+            x = self.up1(x)
+            x = self.dec_conv2(x)
+            x = self.up2(x)
+            x = self.dec_conv3(x)
+            x = self.up3(x)
+            segmentation = self.sigmoid(self.seg_final(x))
             
             return classification, segmentation, attention_maps
         else:
